@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-neo4j-connector
+  labels:
+    app: kafka-neo4j-connector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-neo4j-connector
+  template:
+    metadata:
+      labels:
+        app: kafka-neo4j-connector
+    spec:
+      containers:
+        - name: kafka-neo4j
+          image: veedata/kafka-neo4j-connect
+          ports:
+            - containerPort: 8083
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "Waiting for Kafka at kafka-service:29092..."
+              while ! nc -z kafka-service 29092; do sleep 2; done
+              echo "Kafka is up."
+
+              echo "Waiting for Neo4j at neo4j-service:7687..."
+              while ! nc -z neo4j-service 7687; do sleep 2; done
+              echo "Neo4j is up."
+
+              echo "Starting Kafka Connect..."
+              /etc/confluent/docker/run
+          env:
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: "kafka-service:29092"
+            - name: CONNECT_REST_PORT
+              value: "8083"
+            - name: CONNECT_GROUP_ID
+              value: "kafka-connect"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "_connect-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "_connect-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "_connect-status"
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.storage.StringConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              value: "kafka-neo4j-connector"
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/etc/kafka-connect/jars"
+            - name: NEO4J_SERVER_URI
+              value: "bolt://neo4j-service:7687"
+            - name: NEO4J_AUTH
+              value: "neo4j/project1phase2"
+            - name: CONNECTOR_CLASS
+              value: "streams.kafka.connect.sink.Neo4jSinkConnector"
+            - name: TOPICS
+              value: "nyc_taxicab_data"
+            - name: NEO4J_STREAMS_TOPIC_CYPHER_NYC_TAXICAB_DATA
+              value: "MERGE (t:Trip {pu: event.PULocationID, do: event.DOLocationID}) SET t.distance = event.trip_distance, t.fare = event.fare_amount"
